@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+*{box-sizing:border-box}body{margin:0;padding:4px;background:transparent;font:13px system-ui,sans-serif;color:#334155}#wrap{width:100%;text-align:center}canvas{display:block;width:100%;height:auto;border-radius:12px;touch-action:none;box-shadow:0 3px 14px #17233b14}p{margin:8px 0 2px;color:#75819a;font-size:12px}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="editor"></canvas><p>Drag any numbered corner marker to refine the page boundary.</p></div>
+<script>
+(() => {
+  const canvas = document.getElementById('editor');
+  const ctx = canvas.getContext('2d');
+  const image = new Image();
+  let args = {}, corners = [], active = -1, scale = 1, ready = false;
+  const send = (type, extra={}) => window.parent.postMessage({isStreamlitMessage:true,type,...extra}, '*');
+  const setHeight = () => send('streamlit:setFrameHeight', {height:canvas.clientHeight + 34});
+  const setValue = () => send('streamlit:setComponentValue', {value:corners.map(p=>[p[0],p[1]]), dataType:'json'});
+  function draw(){
+    if(!ready) return;
+    const maxW = Math.max(260, Math.min(780, document.getElementById('wrap').clientWidth - 8));
+    scale = Math.min(maxW / image.naturalWidth, 620 / image.naturalHeight, 1);
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const pts = corners.map(p=>[p[0]*canvas.width,p[1]*canvas.height]);
+    ctx.beginPath(); pts.forEach((p,i)=> i ? ctx.lineTo(p[0],p[1]) : ctx.moveTo(p[0],p[1])); ctx.closePath();
+    ctx.fillStyle='rgba(83,109,254,.10)'; ctx.fill(); ctx.strokeStyle='#536dfe'; ctx.lineWidth=3; ctx.stroke();
+    pts.forEach((p,i)=>{ctx.beginPath();ctx.arc(p[0],p[1],11,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=4;ctx.strokeStyle='#7158e8';ctx.stroke();ctx.fillStyle='#263552';ctx.font='bold 11px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i+1),p[0],p[1]);});
+    setHeight();
+  }
+  function pointer(e){const r=canvas.getBoundingClientRect();return [(e.clientX-r.left)*canvas.width/r.width,(e.clientY-r.top)*canvas.height/r.height]}
+  canvas.addEventListener('pointerdown', e=>{const [x,y]=pointer(e);active=-1;let best=24;corners.forEach((p,i)=>{const d=Math.hypot(p[0]*canvas.width-x,p[1]*canvas.height-y);if(d<best){best=d;active=i}});if(active>=0){canvas.setPointerCapture(e.pointerId);e.preventDefault()}});
+  canvas.addEventListener('pointermove', e=>{if(active<0)return;const [x,y]=pointer(e);corners[active]=[Math.max(0,Math.min(1,x/canvas.width)),Math.max(0,Math.min(1,y/canvas.height))];draw();setValue()});
+  canvas.addEventListener('pointerup',()=>{active=-1});
+  window.addEventListener('message', e=>{const d=e.data;if(!d||d.type!=='streamlit:render')return;args=d.args||{};image.onload=()=>{corners=(args.default_corners||[[0,0],[1,0],[1,1],[0,1]]).map(p=>[Number(p[0]),Number(p[1])]);ready=true;draw();setValue()};image.src='data:image/png;base64,'+args.image_base64;});
+  send('streamlit:componentReady',{apiVersion:1});
+  window.addEventListener('resize',draw);
+})();
+</script>
+</body>
+</html>
